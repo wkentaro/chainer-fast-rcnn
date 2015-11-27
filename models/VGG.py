@@ -30,7 +30,7 @@ class VGG(FunctionSet):
             conv5_2=F.Convolution2D(512, 512, 3, stride=1, pad=1),
             conv5_3=F.Convolution2D(512, 512, 3, stride=1, pad=1),
 
-            fc6=F.Linear(4608, 4096),
+            fc6=F.Linear(25088, 4096),
             fc7=F.Linear(4096, 4096),
             cls_score=F.Linear(4096, 21),
             bbox_pred=F.Linear(4096, 84)
