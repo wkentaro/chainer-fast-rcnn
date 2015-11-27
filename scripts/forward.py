@@ -14,6 +14,8 @@ from VGG import VGG
 from chainer import cuda
 from cython_nms import nms
 
+IS_OPENCV3 = True if cv.__version__[0] == '3' else False
+
 CLASSES = ('__background__',
            'aeroplane', 'bicycle', 'bird', 'boat',
            'bottle', 'bus', 'car', 'cat', 'chair',
@@ -92,15 +94,16 @@ def draw_result(out, im_scale, clss, bbox, rects, nms_thresh, conf):
             x2 = _center_x + 0.5 * _width
             y2 = _center_y + 0.5 * _height
 
+            line_type = cv.LINE_AA if IS_OPENCV3 else cv.CV_AA
             cv.rectangle(out, (int(x1), int(y1)), (int(x2), int(y2)),
-                         (0, 0, 255), 2, cv.LINE_AA)
+                         (0, 0, 255), 2, line_type)
             ret, baseline = cv.getTextSize(CLASSES[cls_id],
                                            cv.FONT_HERSHEY_SIMPLEX, 1.0, 1)
             cv.rectangle(out, (int(x1), int(y2) - ret[1] - baseline),
                          (int(x1) + ret[0], int(y2)), (0, 0, 255), -1)
             cv.putText(out, CLASSES[cls_id], (int(x1), int(y2) - baseline),
                        cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1,
-                       cv.LINE_AA)
+                       line_type)
 
             print CLASSES[cls_id], dets[i, 4]
 
