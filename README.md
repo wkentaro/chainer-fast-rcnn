@@ -4,7 +4,7 @@ It aims at reproducing results of [fast-rcnn](https://github.com/rbgirshick/fast
 
 ## Requirements
 
-- [OpenCV 3.0 with python bindings](http://opencv.org)
+- [OpenCV 2.4/3.0 with python bindings](http://opencv.org)
 - [Chainer 1.4](https://github.com/pfn/chainer)
 - [fast-rcnn](https://github.com/rbgirshick/fast-rcnn)
 - [dlib v18.18](https://github.com/davisking/dlib)
