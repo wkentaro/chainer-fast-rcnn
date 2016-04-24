@@ -62,10 +62,10 @@ class VGG16(chainer.Chain):
         h = F.relu(self.conv5_1(h))
         h = F.relu(self.conv5_2(h))
         h = F.relu(self.conv5_3(h))
-        h = roi_pooling_2d(h, rois)
+        h = roi_pooling_2d(h, rois, 7, 7, spatial_scale=0.0625)
 
-        h = F.dropout(F.relu(self.fc6(h)), train=train, ratio=0.5)
-        h = F.dropout(F.relu(self.fc7(h)), train=train, ratio=0.5)
+        h = F.dropout(F.relu(self.fc6(h)), train=self.train, ratio=0.5)
+        h = F.dropout(F.relu(self.fc7(h)), train=self.train, ratio=0.5)
         cls_score = F.softmax(self.cls_score(h))
         bbox_pred = self.bbox_pred(h)
 
