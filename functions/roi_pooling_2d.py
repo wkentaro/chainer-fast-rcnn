@@ -1,11 +1,13 @@
 import numpy
 
+import chainer
 from chainer import cuda
 from chainer import function
+import chainer.links as L
 from chainer.utils import type_check
 
 
-class ROIPooling2D(function.Function):
+class ROIPooling2D(chainer.link.Link):
 
     """RoI pooling over a set of 2d planes."""
 
@@ -25,8 +27,8 @@ class ROIPooling2D(function.Function):
             roi_type.shape[1] == 5,
         )
 
-    def forward_gpu(self, inputs):
-        bottom_data, bottom_rois = inputs
+    def forward_gpu(self, x, rois):
+        bottom_data, bottom_rois = x.data, rois.data
         channels, height, width = bottom_data.shape[1:]
         n_rois = bottom_rois.shape[0]
         top_data = cuda.cupy.empty((n_rois, channels, self.pooled_height,
@@ -99,8 +101,8 @@ class ROIPooling2D(function.Function):
 
         return top_data,
 
-    def backward_gpu(self, inputs, gy):
-        bottom_data, bottom_rois = inputs
+    def backward_gpu(self, x, rois, gy):
+        bottom_data, bottom_rois = x.data, rois.data
         channels, height, width = bottom_data.shape[1:]
         bottom_diff = cuda.cupy.zeros_like(bottom_data, dtype=numpy.float32)
         cuda.cupy.ElementwiseKernel(

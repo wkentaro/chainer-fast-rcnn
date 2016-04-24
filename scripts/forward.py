@@ -10,9 +10,10 @@ import argparse
 import cv2 as cv
 import numpy as np
 import cPickle as pickle
-from VGG import VGG
+from vgg16 import VGG16
 from chainer import cuda
-from cython_nms import nms
+import chainer.serializers as S
+from chainer import Variable
 
 IS_OPENCV3 = True if cv.__version__[0] == '3' else False
 
@@ -26,10 +27,10 @@ PIXEL_MEANS = np.array([102.9801, 115.9465, 122.7717], dtype=np.float32)
 
 
 def get_model():
-    vgg = pickle.load(open('models/VGG.chainermodel'))
-    vgg.to_gpu()
-
-    return vgg
+    model = VGG16()
+    S.load_hdf5('models/vgg16.chainermodel', model)
+    model.to_gpu()
+    return model
 
 
 def img_preprocessing(orig_img, pixel_means, max_size=1000, scale=600):
@@ -63,15 +64,13 @@ def get_bboxes(orig_img, im_scale, min_size, dedup_boxes=1. / 16):
     return rects
 
 
-def draw_result(out, im_scale, clss, bbox, rects, nms_thresh, conf):
+def draw_result(out, im_scale, clss, bbox, rects, conf):
     out = cv.resize(out, None, None, fx=im_scale, fy=im_scale,
                     interpolation=cv.INTER_LINEAR)
     for cls_id in range(1, 21):
         _cls = clss[:, cls_id][:, np.newaxis]
         _bbx = bbox[:, cls_id * 4: (cls_id + 1) * 4]
         dets = np.hstack((_bbx, _cls))
-        keep = nms(dets, nms_thresh)
-        dets = dets[keep, :]
         orig_rects = cuda.cupy.asnumpy(rects)[keep, 1:]
 
         inds = np.where(dets[:, -1] >= conf)[0]
@@ -115,12 +114,11 @@ if __name__ == '__main__':
     parser.add_argument('--img_fn', type=str, default='sample.jpg')
     parser.add_argument('--out_fn', type=str, default='result.jpg')
     parser.add_argument('--min_size', type=int, default=500)
-    parser.add_argument('--nms_thresh', type=float, default=0.3)
     parser.add_argument('--conf', type=float, default=0.8)
     args = parser.parse_args()
 
     xp = cuda.cupy if cuda.available else np
-    vgg = get_model()
+    model = get_model()
 
     orig_image = cv.imread(args.img_fn)
     img, im_scale = img_preprocessing(orig_image, PIXEL_MEANS)
@@ -129,10 +127,15 @@ if __name__ == '__main__':
     img = xp.asarray(img)
     rects = xp.asarray(orig_rects)
 
-    cls_score, bbox_pred = vgg.forward(img[xp.newaxis, :, :, :], rects)
+    x_data = img[xp.newaxis, :, :, :]
+    x = Variable(x_data, volatile=True)
+    rects_val = Variable(rects, volatile=True)
+
+    model.train = False
+    cls_score, bbox_pred = model(x, rects_val)
 
     clss = cuda.cupy.asnumpy(cls_score.data)
     bbox = cuda.cupy.asnumpy(bbox_pred.data)
     result = draw_result(orig_image, im_scale, clss, bbox, orig_rects,
-                         args.nms_thresh, args.conf)
+                         args.conf)
     cv.imwrite(args.out_fn, result)
