@@ -1,18 +1,57 @@
-import numpy
+# Modified work:
+# -----------------------------------------------------------------------------
+# Copyright (c) 2015 Preferred Infrastructure, Inc.
+# Copyright (c) 2015 Preferred Networks, Inc.
+# -----------------------------------------------------------------------------
 
-import chainer
+# Original work of _roi_pooling_slice, forward_cpu and backward_cpu:
+# -----------------------------------------------------------------------------
+# Copyright 2014 Nervana Systems Inc.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# -----------------------------------------------------------------------------
+
+# Original work of forward_gpu and backward_gpu:
+# -----------------------------------------------------------------------------
+# Fast R-CNN
+# Copyright (c) 2015 Microsoft
+# Licensed under The MIT License [see fast-rcnn/LICENSE for details]
+# Written by Ross Girshick
+# -----------------------------------------------------------------------------
+
+import numpy
+import six
+
 from chainer import cuda
 from chainer import function
-import chainer.links as L
 from chainer.utils import type_check
 
 
-class ROIPooling2D(chainer.link.Link):
+def _roi_pooling_slice(size, stride, max_size, roi_offset):
+    start = int(numpy.floor(size * stride))
+    end = int(numpy.ceil((size + 1) * stride))
+
+    start = min(max(start + roi_offset, 0), max_size)
+    end = min(max(end + roi_offset, 0), max_size)
+
+    return slice(start, end), end - start
+
+
+class ROIPooling2D(function.Function):
 
     """RoI pooling over a set of 2d planes."""
 
-    def __init__(self, pooled_height, pooled_width, spatial_scale):
-        self.pooled_height, self.pooled_width = pooled_height, pooled_width
+    def __init__(self, outh, outw, spatial_scale):
+        self.outh, self.outw = outh, outw
         self.spatial_scale = spatial_scale
 
     def check_type_forward(self, in_types):
@@ -27,12 +66,54 @@ class ROIPooling2D(chainer.link.Link):
             roi_type.shape[1] == 5,
         )
 
-    def forward_gpu(self, x, rois):
-        bottom_data, bottom_rois = x.data, rois.data
+    def forward_cpu(self, inputs):
+        bottom_data, bottom_rois = inputs
+        n_rois, channels, height, width = bottom_data.shape
+        top_data = numpy.empty((n_rois, channels, self.outh, self.outw),
+                               dtype=numpy.float32)
+        self.argmax_data = numpy.empty_like(top_data).astype(numpy.int32)
+
+        for i_roi in six.moves.range(n_rois):
+            idx, xmin, ymin, xmax, ymax = bottom_rois[i_roi]
+            xmin = int(round(xmin * self.spatial_scale))
+            xmax = int(round(xmax * self.spatial_scale))
+            ymin = int(round(ymin * self.spatial_scale))
+            ymax = int(round(ymax * self.spatial_scale))
+            roi_width = max(xmax - xmin + 1, 1)
+            roi_height = max(ymax - ymin + 1, 1)
+            strideh = 1. * roi_height / self.outh
+            stridew = 1. * roi_width / self.outw
+
+            for outh in six.moves.range(self.outh):
+                sliceh, lenh = _roi_pooling_slice(
+                    outh, strideh, height, ymin)
+                if sliceh.stop <= sliceh.start:
+                    continue
+                for outw in six.moves.range(self.outw):
+                    slicew, lenw = _roi_pooling_slice(
+                        outw, stridew, width, xmin)
+                    if slicew.stop <= slicew.start:
+                        continue
+                    roi_data = bottom_data[int(idx), :, sliceh, slicew]\
+                        .reshape(channels, -1)
+                    top_data[i_roi, :, outh, outw] =\
+                        numpy.max(roi_data, axis=1)
+
+                    # get the max idx respect to feature_maps coordinates
+                    max_idx_slice = numpy.unravel_index(
+                        numpy.argmax(roi_data, axis=1), (lenh, lenw))
+                    max_idx_slice_h = max_idx_slice[0] + sliceh.start
+                    max_idx_slice_w = max_idx_slice[1] + slicew.start
+                    max_idx_slice = max_idx_slice_h * width + max_idx_slice_w
+                    self.argmax_data[i_roi, :, outh, outw] = max_idx_slice
+        return top_data,
+
+    def forward_gpu(self, inputs):
+        bottom_data, bottom_rois = inputs
         channels, height, width = bottom_data.shape[1:]
         n_rois = bottom_rois.shape[0]
-        top_data = cuda.cupy.empty((n_rois, channels, self.pooled_height,
-                                    self.pooled_width), dtype=numpy.float32)
+        top_data = cuda.cupy.empty((n_rois, channels, self.outh,
+                                    self.outw), dtype=numpy.float32)
         self.argmax_data = cuda.cupy.empty_like(top_data).astype(numpy.int32)
         cuda.cupy.ElementwiseKernel(
             '''
@@ -96,13 +177,53 @@ class ROIPooling2D(chainer.link.Link):
             argmax_data = maxidx;
             ''', 'roi_poolig_2d_fwd'
         )(bottom_data, self.spatial_scale, channels, height, width,
-          self.pooled_height, self.pooled_width, bottom_rois, top_data,
+          self.outh, self.outw, bottom_rois, top_data,
           self.argmax_data)
 
         return top_data,
 
-    def backward_gpu(self, x, rois, gy):
-        bottom_data, bottom_rois = x.data, rois.data
+    def backward_cpu(self, inputs, gy):
+        bottom_data, bottom_rois = inputs
+        n_rois, channels, height, width = bottom_data.shape
+        bottom_delta = numpy.zeros_like(bottom_data, dtype=numpy.float32)
+
+        for i_roi in six.moves.range(n_rois):
+            idx, xmin, ymin, xmax, ymax = bottom_rois[i_roi]
+            idx = int(idx)
+            xmin = int(round(xmin * self.spatial_scale))
+            xmax = int(round(xmax * self.spatial_scale))
+            ymin = int(round(ymin * self.spatial_scale))
+            ymax = int(round(ymax * self.spatial_scale))
+            roi_width = max(xmax - xmin + 1, 1)
+            roi_height = max(ymax - ymin + 1, 1)
+
+            strideh = float(roi_height) / float(self.outh)
+            stridew = float(roi_width) / float(self.outw)
+
+            # iterate all the w, h (from feature map) that fall into this ROIs
+            for w in six.moves.range(xmin, xmax + 1):
+                for h in six.moves.range(ymin, ymax + 1):
+                    phstart = int(numpy.floor(float(h - ymin) / strideh))
+                    phend = int(numpy.ceil(float(h - ymin + 1) / strideh))
+                    pwstart = int(numpy.floor(float(w - xmin) / stridew))
+                    pwend = int(numpy.ceil(float(w - xmin + 1) / stridew))
+
+                    phstart = min(max(phstart, 0), self.outh)
+                    phend = min(max(phend, 0), self.outh)
+                    pwstart = min(max(pwstart, 0), self.outw)
+                    pwend = min(max(pwend, 0), self.outw)
+
+                    for ph in six.moves.range(phstart, phend):
+                        for pw in six.moves.range(pwstart, pwend):
+                            max_idx_tmp = self.argmax_data[i_roi, :, ph, pw]
+                            for c in six.moves.range(channels):
+                                if max_idx_tmp[c] == (h * width + w):
+                                    bottom_delta[idx, c, h, w] += \
+                                        gy[0][i_roi, c, ph, pw]
+        return bottom_delta, None
+
+    def backward_gpu(self, inputs, gy):
+        bottom_data, bottom_rois = inputs
         channels, height, width = bottom_data.shape[1:]
         bottom_diff = cuda.cupy.zeros_like(bottom_data, dtype=numpy.float32)
         cuda.cupy.ElementwiseKernel(
@@ -115,8 +236,8 @@ class ROIPooling2D(chainer.link.Link):
             '''
             int w = i % width;
             int h = (i / width) % height;
-            int c = (i / width / height) % channels;
-            int num = i / width / height / channels;
+            int c = (i / (width * height)) % channels;
+            int num = i / (width * height * channels);
 
             float gradient = 0;
             // Accumulate gradient over all ROIs that pooled this element
@@ -183,12 +304,31 @@ class ROIPooling2D(chainer.link.Link):
             bottom_diff = gradient;
             ''', 'roi_pooling_2d_bwd'
         )(gy[0], self.argmax_data, bottom_rois.shape[0], self.spatial_scale,
-          channels, height, width, self.pooled_height, self.pooled_width,
+          channels, height, width, self.outh, self.outw,
           bottom_rois, bottom_diff)
 
         return bottom_diff, None
 
 
-def roi_pooling_2d(x, rois, pooled_height=7, pooled_width=7,
-                   spatial_scale=0.0625):
-    return ROIPooling2D(pooled_height, pooled_width, spatial_scale)(x, rois)
+def roi_pooling_2d(x, rois, outh, outw, spatial_scale):
+    """Spatial Region of Interest (ROI) pooling function.
+
+    This function acts similarly to :class:`~functions.MaxPooling2D`, but
+    it computes the maximum of input spatial patch for each channel
+    with the region of interest.
+
+    Args:
+        x (~chainer.Variable): Input variable.
+        rois (~chainer.Variable): Input roi variable.
+        outh (int): Height of output image after pooled.
+        outw (int): Width of output image after pooled.
+        spatial_scale (float): Scale of the roi is resized.
+
+    Returns:
+        ~chainer.Variable: Ouptut variable.
+
+    See the original paper proposing ROIPooling:
+    `Fast R-CNN <http://arxiv.org/abs/1504.08083>`_.
+
+    """
+    return ROIPooling2D(outh, outw, spatial_scale)(x, rois)
