@@ -21,7 +21,7 @@ from caffenet import CaffeNet
 from vgg_cnn_m_1024 import VGG_CNN_M_1024
 
 # lib
-from py_cpu_nms import py_cpu_nms
+from py_cpu_nms import py_cpu_nms as nms
 
 
 IS_OPENCV3 = True if cv.__version__[0] == '3' else False
@@ -80,14 +80,14 @@ def get_bboxes(orig_img, im_scale, min_size, dedup_boxes=1. / 16):
     return rects
 
 
-def draw_result(out, im_scale, clss, bbox, rects, conf):
+def draw_result(out, im_scale, clss, bbox, rects, nms_thresh, conf):
     out = cv.resize(out, None, None, fx=im_scale, fy=im_scale,
                     interpolation=cv.INTER_LINEAR)
     for cls_id in range(1, 21):
         _cls = clss[:, cls_id][:, np.newaxis]
         _bbx = bbox[:, cls_id * 4: (cls_id + 1) * 4]
         dets = np.hstack((_bbx, _cls))
-        keep = py_cpu_nms(dets, thresh=0.3)
+        keep = nms(dets, nms_thresh)
         dets = dets[keep, :]
         orig_rects = cuda.cupy.asnumpy(rects)[keep, 1:]
 
@@ -133,6 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--out_fn', type=str, default='result.jpg')
     parser.add_argument('--min_size', type=int, default=500)
     parser.add_argument('--conf', type=float, default=0.8)
+    parser.add_argument('--nms_thresh', type=float, default=0.3)
     parser.add_argument('--model', type=str, default='vgg_cnn_m_1024')
     args = parser.parse_args()
 
@@ -156,5 +157,5 @@ if __name__ == '__main__':
     clss = cuda.cupy.asnumpy(cls_score.data)
     bbox = cuda.cupy.asnumpy(bbox_pred.data)
     result = draw_result(orig_image, im_scale, clss, bbox, orig_rects,
-                         args.conf)
+                         args.nms_thresh, args.conf)
     cv.imwrite(args.out_fn, result)
