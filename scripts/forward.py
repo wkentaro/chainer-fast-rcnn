@@ -122,7 +122,7 @@ if __name__ == '__main__':
     parser.add_argument('--out_fn', type=str, default='result.jpg')
     parser.add_argument('--min_size', type=int, default=500)
     parser.add_argument('--conf', type=float, default=0.8)
-    parser.add_argument('--model', type=str, default='caffenet')
+    parser.add_argument('--model', type=str, default='vgg_cnn_m_1024')
     args = parser.parse_args()
 
     xp = cuda.cupy if cuda.available else np
