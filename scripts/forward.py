@@ -100,7 +100,7 @@ def draw_result(out, im_scale, clss, bbox, rects, conf):
             center_x = x1 + 0.5 * width
             center_y = y1 + 0.5 * height
 
-            dx, dy, dw, dh = map(int, _bbox)
+            dx, dy, dw, dh = _bbox
             _center_x = dx * width + center_x
             _center_y = dy * height + center_y
             _width = np.exp(dw) * width
