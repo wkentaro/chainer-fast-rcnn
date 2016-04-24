@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, 'models')
 sys.path.insert(0, 'lib')
 
+import os
 import time
 import dlib
 import argparse
@@ -130,12 +131,17 @@ def draw_result(out, im_scale, clss, bbox, rects, nms_thresh, conf):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--img_fn', type=str, default='sample.jpg')
-    parser.add_argument('--out_fn', type=str, default='result.jpg')
+    parser.add_argument('--out_fn', type=str, default=None)
     parser.add_argument('--min_size', type=int, default=500)
     parser.add_argument('--conf', type=float, default=0.8)
     parser.add_argument('--nms_thresh', type=float, default=0.3)
     parser.add_argument('--model', type=str, default='vgg_cnn_m_1024')
     args = parser.parse_args()
+
+    out_fn = args.out_fn
+    if out_fn is None:
+        _, ext = os.path.splitext(args.img_fn)
+        out_fn = 'result_{model}.{ext}'.format(model=args.model, ext=ext)
 
     xp = cuda.cupy if cuda.available else np
     model = get_model(args.model)
@@ -158,4 +164,4 @@ if __name__ == '__main__':
     bbox = cuda.cupy.asnumpy(bbox_pred.data)
     result = draw_result(orig_image, im_scale, clss, bbox, orig_rects,
                          args.nms_thresh, args.conf)
-    cv.imwrite(args.out_fn, result)
+    cv.imwrite(out_fn, result)
