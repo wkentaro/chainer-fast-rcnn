@@ -14,8 +14,10 @@ from chainer import cuda
 import chainer.serializers as S
 from chainer import Variable
 
+# models
 from vgg16 import VGG16
 from caffenet import CaffeNet
+from vgg_cnn_m_1024 import VGG_CNN_M_1024
 
 IS_OPENCV3 = True if cv.__version__[0] == '3' else False
 
@@ -33,6 +35,8 @@ def get_model(name):
         model = VGG16()
     elif name == 'caffenet':
         model = CaffeNet()
+    elif name == 'vgg_cnn_m_1024':
+        model = VGG_CNN_M_1024()
     else:
         raise ValueError('Unsupported model name: %s' % name)
     S.load_hdf5('models/%s.chainermodel' % name, model)

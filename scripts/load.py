@@ -52,4 +52,4 @@ for name, param in net.params.iteritems():
     assert layer.b.data.shape == param[1].data.shape
     layer.b.data = param[1].data
 
-S.save_hdf5('models/caffenet.chainermodel', model)
+S.save_hdf5('models/%s.chainermodel' % model_name, model)
