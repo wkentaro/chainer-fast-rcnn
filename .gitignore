@@ -6,8 +6,7 @@ fast-rcnn
 dlib
 
 *.so
-*.pyc
-*.jpg
+*.py[cdo]
 *.png
 *.pdf
 *.tif
