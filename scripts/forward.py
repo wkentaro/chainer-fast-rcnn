@@ -3,7 +3,8 @@
 
 import sys
 sys.path.insert(0, 'models')
-sys.path.insert(0, 'fast-rcnn/lib/utils')
+sys.path.insert(0, 'lib')
+
 import time
 import dlib
 import argparse
@@ -18,6 +19,10 @@ from chainer import Variable
 from vgg16 import VGG16
 from caffenet import CaffeNet
 from vgg_cnn_m_1024 import VGG_CNN_M_1024
+
+# lib
+from py_cpu_nms import py_cpu_nms
+
 
 IS_OPENCV3 = True if cv.__version__[0] == '3' else False
 
@@ -82,7 +87,9 @@ def draw_result(out, im_scale, clss, bbox, rects, conf):
         _cls = clss[:, cls_id][:, np.newaxis]
         _bbx = bbox[:, cls_id * 4: (cls_id + 1) * 4]
         dets = np.hstack((_bbx, _cls))
-        orig_rects = cuda.cupy.asnumpy(rects)[:, 1:]
+        keep = py_cpu_nms(dets, thresh=0.3)
+        dets = dets[keep, :]
+        orig_rects = cuda.cupy.asnumpy(rects)[keep, 1:]
 
         inds = np.where(dets[:, -1] >= conf)[0]
         for i in inds:
