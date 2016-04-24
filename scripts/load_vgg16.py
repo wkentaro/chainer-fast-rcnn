@@ -3,7 +3,6 @@
 
 import sys
 sys.path.insert(0, 'models')
-sys.path.insert(0, 'fast-rcnn/caffe-fast-rcnn/build/install/python')
 import caffe
 import chainer.serializers as S
 from vgg16 import VGG16
@@ -22,7 +21,10 @@ for name, param in net.params.iteritems():
     print name, param[0].data.shape, param[1].data.shape,
     print layer.W.data.shape, layer.b.data.shape
 
+    assert layer.W.data.shape == param[0].data.shape
     layer.W.data = param[0].data
+
+    assert layer.b.data.shape == param[1].data.shape
     layer.b.data = param[1].data
 
 S.save_hdf5('models/vgg16.chainermodel', model)

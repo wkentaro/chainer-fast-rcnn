@@ -10,10 +10,12 @@ import argparse
 import cv2 as cv
 import numpy as np
 import cPickle as pickle
-from vgg16 import VGG16
 from chainer import cuda
 import chainer.serializers as S
 from chainer import Variable
+
+from vgg16 import VGG16
+from caffenet import CaffeNet
 
 IS_OPENCV3 = True if cv.__version__[0] == '3' else False
 
@@ -26,9 +28,14 @@ CLASSES = ('__background__',
 PIXEL_MEANS = np.array([102.9801, 115.9465, 122.7717], dtype=np.float32)
 
 
-def get_model():
-    model = VGG16()
-    S.load_hdf5('models/vgg16.chainermodel', model)
+def get_model(name):
+    if name == 'vgg16':
+        model = VGG16()
+    elif name == 'caffenet':
+        model = CaffeNet()
+    else:
+        raise ValueError('Unsupported model name: %s' % name)
+    S.load_hdf5('models/%s.chainermodel' % name, model)
     model.to_gpu()
     return model
 
@@ -115,10 +122,11 @@ if __name__ == '__main__':
     parser.add_argument('--out_fn', type=str, default='result.jpg')
     parser.add_argument('--min_size', type=int, default=500)
     parser.add_argument('--conf', type=float, default=0.8)
+    parser.add_argument('--model', type=str, default='caffenet')
     args = parser.parse_args()
 
     xp = cuda.cupy if cuda.available else np
-    model = get_model()
+    model = get_model(args.model)
 
     orig_image = cv.imread(args.img_fn)
     img, im_scale = img_preprocessing(orig_image, PIXEL_MEANS)
