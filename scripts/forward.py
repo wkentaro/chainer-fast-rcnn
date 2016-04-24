@@ -82,7 +82,7 @@ def draw_result(out, im_scale, clss, bbox, rects, conf):
         _cls = clss[:, cls_id][:, np.newaxis]
         _bbx = bbox[:, cls_id * 4: (cls_id + 1) * 4]
         dets = np.hstack((_bbx, _cls))
-        orig_rects = cuda.cupy.asnumpy(rects)[keep, 1:]
+        orig_rects = cuda.cupy.asnumpy(rects)[:, 1:]
 
         inds = np.where(dets[:, -1] >= conf)[0]
         for i in inds:
