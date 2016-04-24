@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
+sys.path.insert(0, 'functions')
+
 import chainer
 from chainer import cuda
 import chainer.functions as F
 import chainer.links as L
 from chainer import Variable
+
+from roi_pooling_2d import roi_pooling_2d
 
 
 class VGG_CNN_M_1024(chainer.Chain):
@@ -45,7 +50,7 @@ class VGG_CNN_M_1024(chainer.Chain):
         h = self.conv5(h)
         h = F.relu(h)
 
-        h = F.roi_pooling_2d(h, rois, outh=6, outw=6, spatial_scale=0.0625)
+        h = roi_pooling_2d(h, rois, 6, 6, spatial_scale=0.0625)
 
         h = self.fc6(h)
         h = F.relu(h)
