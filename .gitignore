@@ -1,7 +1,6 @@
 .DS_Store
 .remote-sync.json
 
-data
 fast-rcnn
 dlib
 

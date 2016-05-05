@@ -45,6 +45,6 @@ $ python scripts/forward.py --img_fn sample.jpg --out_fn result.jpg
 
 ### Result
 
-![](result_vgg16.jpg)
+![](data/vgg16_forward_out/5891724192.jpg)
 
 'Overstekend wild' St. Janskerkhof Den Bosch &copy; FaceMePLS (https://www.flickr.com/photos/faceme/5891724192)
